@@ -1,10 +1,8 @@
 import uvicorn
 import logging
 from fastapi import FastAPI, HTTPException, Body
-from pydantic import BaseModel
-from typing import Optional
 from quotation import generate_quotations, QuotationRequest
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, HTTPException
 from starlette.config import Config
 from starlette.requests import Request
 from starlette.middleware.sessions import SessionMiddleware
@@ -13,7 +11,6 @@ from authlib.integrations.starlette_client import OAuth
 from fastapi.middleware.cors import CORSMiddleware
 from db import db_manager
 from google.oauth2 import id_token
-from typing import List, Dict, Optional
 from google.auth.transport import requests
 
 app = FastAPI(docs_url="/docs", redoc_url="/redoc")

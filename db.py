@@ -1,6 +1,6 @@
 from pymongo import MongoClient
 from typing import Dict, List
-from datetime import datetime
+from datetime import datetime, UTC
 import logging
 from bson import ObjectId
 
@@ -29,8 +29,8 @@ class DatabaseManager:
                 'google_sub': user_info['sub'],
                 'email': user_info['email'],
                 'name': user_info['name'],
-                'last_login': datetime.utcnow(),
-                'created_at': datetime.utcnow()
+                'last_login': datetime.now(UTC),
+                'created_at': datetime.now(UTC)
             }
             
             result = self.users_collection.replace_one(
@@ -59,7 +59,7 @@ class DatabaseManager:
         try:
             quotation_batch = {
                 'quotations': quotations,
-                'created_at': datetime.utcnow(),
+                'created_at': datetime.now(UTC),
                 'user_id': user_id
             }
             
@@ -99,7 +99,7 @@ class DatabaseManager:
         try:
             config = {
                 'materials': material_config,
-                'created_at': datetime.utcnow(),
+                'created_at': datetime.now(UTC),
                 'user_id': user_id
             }
             
