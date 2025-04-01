@@ -209,16 +209,22 @@ class MaterialSelection(BaseModel):
     @classmethod
     def validate_costs_profits(cls, v, info):
         validate_type(v, dict, info.field_name)
-        if not all(isinstance(value, float) for value in v.values()):
-            raise HTTPException(
-                status_code=400,
-                detail=f"All values in {info.field_name} must be floats"
-            )
-        if not all(value >= 0 for value in v.values()):
-            raise HTTPException(
-                status_code=400,
-                detail=f"All values in {info.field_name} must be positive"
-            )
+        for brand, value in v.items():
+            if not isinstance(value, float):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid type for {info.field_name} value of brand '{brand}': expected float, got {type(value).__name__}"
+                )
+            if info.field_name == 'costs' and value <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cost for brand '{brand}' must be greater than 0, got {value}"
+                )
+            if info.field_name == 'profits' and value < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Profit for brand '{brand}' must be greater than or equal to 0, got {value}"
+                )
         if 'available_brands' in info.data:
             for brand in info.data['available_brands']:
                 if brand not in v:

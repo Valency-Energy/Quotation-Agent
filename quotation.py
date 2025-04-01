@@ -1,92 +1,49 @@
-from pydantic import BaseModel, ValidationError
 from fastapi import HTTPException, Body
 from datetime import datetime, UTC
 import itertools
-from models import (
-    SolarPanel, Inverter, MountingStructure, BOSComponent, 
-    ProtectionEquipment, EarthingSystem, NetMetering,
-    QuotationRequest, MaterialSelection
-)
+from models import QuotationRequest
+
 
 async def generate_quotations(request: QuotationRequest = Body(...)):
     from db import db_manager
     
     try:
         # Validate the request first
-        try:
-            validated_request = QuotationRequest(**request.model_dump())
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Validation error: {str(e)}"
-            )
+        validated_request = QuotationRequest(**request.model_dump())
 
         # Prepare material options by type
         material_options = {}
         material_types = []
         
         for material in validated_request.materials:
-            try:
-                material_type = material.material_type
-                material_types.append(material_type)
-                options = []
+            material_type = material.material_type
+            material_types.append(material_type)
+            options = []
+            
+            for brand in material.available_brands:
+                if brand not in material.components:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Component details missing for brand: {brand}"
+                    )
                 
-                for brand in material.available_brands:
-                    if brand not in material.components:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Component details missing for brand: {brand}"
-                        )
-                    
-                    component = material.components[brand]
-                    component_dict = component.model_dump() if isinstance(component, BaseModel) else component
-                    
-                    try:
-                        if material_type == 'solar_panel':
-                            validated_component = SolarPanel(**component_dict)
-                        elif material_type == 'inverter':
-                            validated_component = Inverter(**component_dict)
-                        elif material_type == 'mounting_structure':
-                            validated_component = MountingStructure(**component_dict)
-                        elif material_type == 'bos_component':
-                            validated_component = BOSComponent(**component_dict)
-                        elif material_type == 'protection_equipment':
-                            validated_component = ProtectionEquipment(**component_dict)
-                        elif material_type == 'earthing_system':
-                            validated_component = EarthingSystem(**component_dict)
-                        elif material_type == 'net_metering':
-                            validated_component = NetMetering(**component_dict)
-                        else:
-                            raise HTTPException(
-                                status_code=400,
-                                detail=f"Invalid material type: {material_type}"
-                            )
-                    except ValidationError as e:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Validation error for {brand} {material_type}: {str(e)}"
-                        )
-                    
-                    if brand not in material.costs or brand not in material.profits:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Missing cost or profit for brand: {brand}"
-                        )
-                    
-                    options.append({
-                        "brand": brand,
-                        "cost": material.costs[brand],
-                        "profit": material.profits[brand],
-                        "details": validated_component.model_dump()
-                    })
+                component = material.components[brand]
+                component_dict = component.model_dump()
                 
-                material_options[material_type] = options
+                if brand not in material.costs or brand not in material.profits:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Missing cost or profit for brand: {brand}"
+                    )
                 
-            except ValidationError as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Validation error for material type {material_type}: {str(e)}"
-                )
+                options.append({
+                    "brand": brand,
+                    "cost": material.costs[brand],
+                    "profit": material.profits[brand],
+                    "details": component_dict
+                })
+            
+            material_options[material_type] = options
         
         # Generate all possible combinations of materials
         material_lists = []
