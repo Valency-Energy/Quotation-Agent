@@ -1,7 +1,6 @@
-# db.py
-import uuid
+from pymongo import MongoClient
+from typing import Dict, List
 from datetime import datetime
-from typing import List, Dict, Any, Optional
 import logging
 from pymongo import MongoClient
 from bson.objectid import ObjectId
@@ -34,160 +33,97 @@ class DatabaseManager:
         # Admin users
         self.admin_users_collection = self.db["admin_users"]
     
-    def create_or_update_user(self, user_info: Dict[str, Any]) -> Dict[str, Any]:
-        user_id = user_info.get('sub')
-        if not user_id:
-            raise ValueError("User ID (sub) is required")
-        
-        # Set timestamps
-        now = datetime.utcnow()
-        
-        # Find user or create new one
-        existing_user = self.users_collection.find_one({"id": user_id})
-        
-        if not existing_user:
-            user_data = {
-                "id": user_id,
-                "email": user_info.get('email'),
-                "name": user_info.get('name'),
-                "created_at": now,
-                "updated_at": now
+    def create_or_update_user(self, user_info: Dict):
+        try:
+            user_filter = {'google_sub': user_info['sub']}
+            
+            user_document = {
+                'google_sub': user_info['sub'],
+                'email': user_info['email'],
+                'name': user_info['name'],
+                'last_login': datetime.utcnow(),
+                'created_at': datetime.utcnow()
             }
-            result = self.users_collection.insert_one(user_data)
-            user_data["_id"] = result.inserted_id
-            return user_data
-        else:
-            # Update existing user
-            self.users_collection.update_one(
-                {"id": user_id},
-                {"$set": {
-                    "email": user_info.get('email'),
-                    "name": user_info.get('name'),
-                    "updated_at": now
-                }}
+            
+            result = self.users_collection.replace_one(
+                user_filter, 
+                user_document, 
+                upsert=True
             )
-            
-            # Get updated user data
-            updated_user = self.users_collection.find_one({"id": user_id})
-            return updated_user
-    
-    def is_admin(self, user_id: str) -> bool:
-        admin = self.admin_users_collection.find_one({"user_id": user_id})
-        return admin is not None
-    
-    def save_material_config(self, materials: List[Dict[str, Any]], user_id: Optional[str] = None) -> str:
-        config_data = {
-            "user_id": user_id,
-            "materials": materials,
-            "created_at": datetime.utcnow()
-        }
-        
-        result = self.material_configs_collection.insert_one(config_data)
-        return str(result.inserted_id)
-    
-    def save_component_config(self, components: List[Dict[str, Any]], user_id: Optional[str] = None) -> str:
-        config_data = {
-            "user_id": user_id,
-            "components": components,
-            "created_at": datetime.utcnow()
-        }
-        
-        result = self.component_configs_collection.insert_one(config_data)
-        return str(result.inserted_id)
-    
-    def save_quotations(self, quotations: List[Dict[str, Any]], user_id: Optional[str] = None) -> str:
-        batch_data = {
-            "user_id": user_id,
-            "quotations": quotations,
-            "created_at": datetime.utcnow()
-        }
-        
-        result = self.quotation_batches_collection.insert_one(batch_data)
-        return str(result.inserted_id)
-    
-    def get_quotation_batch(self, batch_id: str) -> Optional[Dict[str, Any]]:
-        try:
-            batch = self.quotation_batches_collection.find_one({"_id": ObjectId(batch_id)})
-            if batch:
-                # Convert ObjectId to string for JSON serialization
-                batch["id"] = str(batch["_id"])
-                del batch["_id"]
-                return batch
-            return None
-        except:
-            # Handle invalid ObjectId format
-            return None
-    
-    def get_user_quotation_batches(self, user_id: str) -> List[Dict[str, Any]]:
-        user_batches = []
-        
-        cursor = self.quotation_batches_collection.find({"user_id": user_id})
-        
-        for batch in cursor:
-            # Calculate price range
-            quotations = batch.get("quotations", [])
-            price_range = self._calculate_price_range(quotations)
-            
-            # Format result
-            user_batches.append({
-                "id": str(batch["_id"]),
-                "created_at": batch.get("created_at"),
-                "quotation_count": len(quotations),
-                "price_range": price_range
-            })
-        
-        return user_batches
-    
-    def _calculate_price_range(self, quotations: List[Dict[str, Any]]) -> Dict[str, float]:
-        if not quotations:
-            return {"min": 0, "max": 0, "avg": 0}
-        
-        prices = [q.get("total_price", 0) for q in quotations]
-        return {
-            "min": min(prices),
-            "max": max(prices),
-            "avg": sum(prices) / len(prices)
-        }
-    
-    def add_component(self, component_type: str, component_data: Dict[str, Any]) -> str:
-        if component_type not in self.components_collections:
-            raise ValueError(f"Invalid component type: {component_type}")
-        
-        component_data["created_at"] = datetime.utcnow()
-        
-        result = self.components_collections[component_type].insert_one(component_data)
-        return str(result.inserted_id)
-    
-    def get_components(self, component_type: str) -> List[Dict[str, Any]]:
-        if component_type not in self.components_collections:
-            return []
-        
-        components = []
-        cursor = self.components_collections[component_type].find({})
-        
-        for component in cursor:
-            # Convert ObjectId to string for JSON serialization
-            component["id"] = str(component["_id"])
-            del component["_id"]
-            components.append(component)
-        
-        return components
-    
-    def get_component(self, component_type: str, component_id: str) -> Optional[Dict[str, Any]]:
-        if component_type not in self.components_collections:
-            return None
-        
-        try:
-            component = self.components_collections[component_type].find_one({"_id": ObjectId(component_id)})
-            if component:
-                # Convert ObjectId to string for JSON serialization
-                component["id"] = str(component["_id"])
-                del component["_id"]
-                return component
-            return None
-        except:
-            # Handle invalid ObjectId format
-            return None
 
-# Create a singleton instance
-db_manager = DatabaseManager()
+            user = self.users_collection.find_one(user_filter)
+            
+            if user:
+                logger.info(f"User processed: {user['email']}")
+                return user
+            else:
+                logger.error("Failed to create/find user document")
+                return None
+        
+        except Exception as e:
+            logger.error(f"User creation error: {e}", exc_info=True)
+            raise
+    
+    def save_quotations(self, quotations: List[Dict], user_id: str = None):
+        """
+        Save generated quotations to the database
+        """
+        try:
+            quotation_batch = {
+                'quotations': quotations,
+                'created_at': datetime.utcnow(),
+                'user_id': user_id
+            }
+            
+            result = self.quotations_collection.insert_one(quotation_batch)
+            logger.info(f"Saved quotation batch with ID: {result.inserted_id}")
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error saving quotations: {e}", exc_info=True)
+            raise
+    
+    def get_quotation_batch(self, batch_id: str):
+        """
+        Retrieve a specific quotation batch
+        """
+        try:
+            quotation_batch = self.quotations_collection.find_one({"_id": ObjectId(batch_id)})
+            return quotation_batch
+        except Exception as e:
+            logger.error(f"Error retrieving quotation batch: {e}", exc_info=True)
+            raise
+    
+    def get_user_quotation_batches(self, user_id: str):
+        """
+        Retrieve all quotation batches for a specific user
+        """
+        try:
+            batches = list(self.quotations_collection.find({"user_id": user_id}))
+            return batches
+        except Exception as e:
+            logger.error(f"Error retrieving user quotation batches: {e}", exc_info=True)
+            raise
+    
+    def save_material_config(self, material_config: Dict, user_id: str = None):
+        """
+        Save material configuration for later use
+        """
+        try:
+            config = {
+                'materials': material_config,
+                'created_at': datetime.utcnow(),
+                'user_id': user_id
+            }
+            
+            result = self.materials_collection.insert_one(config)
+            logger.info(f"Saved material configuration with ID: {result.inserted_id}")
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error saving material configuration: {e}", exc_info=True)
+            raise
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+uri = os.environ.get('MONGO_URI')
+db_manager = DatabaseManager(uri)

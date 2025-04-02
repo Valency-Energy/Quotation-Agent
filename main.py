@@ -1,8 +1,10 @@
 import uvicorn
 import logging
-from fastapi import FastAPI, HTTPException, Body, Depends
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Union
+from typing import Optional
+from quotation import generate_quotations, QuotationRequest
+from fastapi import FastAPI, Depends, HTTPException
 from starlette.config import Config
 from starlette.requests import Request
 from starlette.middleware.sessions import SessionMiddleware
