@@ -4,10 +4,15 @@ from typing import Dict, List, Optional
 import os
 from datetime import datetime
 
+import dotenv
+dotenv.load_dotenv() 
+
 class MongoDBManager:
     def __init__(self):
         # Connect to MongoDB
-        mongo_uri = "mongodb+srv://rkapoorbe23:La1YcgqAGSHLK7XL@blumi.r2bw9.mongodb.net/?retryWrites=true&w=majority&appName=Blumi"
+        mongo_uri = os.environ.get("MONGO_URI")
+        if not mongo_uri:
+            raise ValueError("MONGO_URI environment variable not set")
         self.client = MongoClient(mongo_uri)
         self.db = self.client["solar_quotation_system"]
         

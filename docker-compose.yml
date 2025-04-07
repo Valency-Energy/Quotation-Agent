@@ -1,10 +1,19 @@
 version: '3.8'
+
 services:
-  web:
+  app:
     build: .
+    container_name: inventory-api
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
     environment:
-      - ENV=production
+      - MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/}
+      - DATABASE_NAME=${DATABASE_NAME:-inventory_db}
+    networks:
+      - inventory-network
+    restart: always
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+networks:
+  inventory-network:
+    driver: bridge
