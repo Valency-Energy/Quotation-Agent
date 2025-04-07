@@ -7,7 +7,7 @@ QUOTATION_ENDPOINT = f"{BASE_URL}/api/quotations/"
 
 # Sample request payload
 payload = {
-    "system_capacity_kw": 10.0,
+    "system_capacity_kw": 5,
     "installation_type": "residential",
     "location": "New Delhi",
 }
