@@ -4,10 +4,15 @@ from typing import Dict, List, Optional
 import os
 from datetime import datetime
 
+import dotenv
+dotenv.load_dotenv() 
+
 class MongoDBManager:
     def __init__(self):
         # Connect to MongoDB
-        mongo_uri = "mongodb+srv://rkapoorbe23:La1YcgqAGSHLK7XL@blumi.r2bw9.mongodb.net/?retryWrites=true&w=majority&appName=Blumi"
+        mongo_uri = os.environ.get("MONGO_URI")
+        if not mongo_uri:
+            raise ValueError("MONGO_URI environment variable not set")
         self.client = MongoClient(mongo_uri)
         self.db = self.client["solar_quotation_system"]
         
@@ -20,7 +25,8 @@ class MongoDBManager:
             "protection_equipment": self.db["protection_equipments"],
             "earthing_system": self.db["earthing_systems"],
             "net_metering": self.db["net_meterings"],
-            "quotations": self.db["quotations"]
+            "quotations": self.db["quotations"],
+            "inventories": self.db["inventories"]
         }
 
     def add_material(self, material_type: str, material_data: Dict) -> str:
@@ -53,6 +59,18 @@ class MongoDBManager:
         for quotation in quotations:
             quotation["_id"] = str(quotation["_id"])
         return quotations
+    def user_inventories(self, user_id: str) -> List[Dict]:
+        """Get all inventories for a specific user"""
+        inventories = list(self.collections["inventories"].find({"user_id": user_id}))
+        for inventory in inventories:
+            inventory["_id"] = str(inventory["_id"])
+        return inventories
+    def get_user_inventory(self, user_id: str) -> Optional[Dict]:
+        inventory = self.collections["inventories"].find_one({"user_id": user_id})
+        if inventory:
+            inventory["_id"] = str(inventory["_id"])
+        return inventory
+
 
 # Create a single instance of the database manager
 db_manager = MongoDBManager()
