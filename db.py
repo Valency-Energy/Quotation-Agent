@@ -26,7 +26,8 @@ class MongoDBManager:
             "inventories": self.db["inventories"],
             "users": self.db["users"],
             "blacklisted_tokens": self.db["blacklisted_tokens"],
-            "refresh_tokens": self.db["refresh_tokens"]  # ✅ Add refresh tokens collection
+            "refresh_tokens": self.db["refresh_tokens"],
+            "access_tokens": self.db["access_tokens"],
         }
 
         self._ensure_ttl_index()
@@ -34,10 +35,13 @@ class MongoDBManager:
     def _ensure_ttl_index(self):
         self.collections["blacklisted_tokens"].create_index(
             [("created_at", ASCENDING)],
-            expireAfterSeconds=900  # Match token expiry duration
+            expireAfterSeconds=900 
         )
 
-        # Optional TTL for refresh tokens (e.g., 7 days = 604800 seconds)
+        self.collections["access_tokens"].create_index(
+        "created_at", expireAfterSeconds=900
+        )
+        # TTL for refresh tokens (e.g., 7 days = 604800 seconds)
         self.collections["refresh_tokens"].create_index(
             [("created_at", ASCENDING)],
             expireAfterSeconds=604800
@@ -53,7 +57,22 @@ class MongoDBManager:
 
     def is_token_blacklisted(self, token: str) -> bool:
         return self.collections["blacklisted_tokens"].find_one({"token": token}) is not None
-
+    
+    # ------------------ ACCESS TOKEN FUNCTIONS ------------------
+    def update_access_token(self, username: str, new_token: str):
+        old_token_doc = self.collections["access_tokens"].find_one({"username": username})
+        
+        # Blacklist the old token if exists
+        if old_token_doc:
+            self.blacklist_token(old_token_doc["token"])
+            self.collections["access_tokens"].delete_one({"username": username})
+        
+        # Store new token
+        self.collections["access_tokens"].insert_one({
+            "username": username,
+            "token": new_token,
+            "created_at": datetime.utcnow()
+        })
     # ------------------ REFRESH TOKEN FUNCTIONS ------------------
 
     def store_refresh_token(self, username: str, refresh_token: str):

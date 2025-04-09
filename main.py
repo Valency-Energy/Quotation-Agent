@@ -1,4 +1,3 @@
-import jwt
 import uvicorn
 import logging
 from fastapi import FastAPI, Body, HTTPException, Query
@@ -17,7 +16,7 @@ from models import (
     ProtectionEquipment, EarthingSystem, NetMetering, Inventory
 )
 from db import db_manager
-from auth import JWT_ALGORITHM, JWT_SECRET, create_access_token, create_refresh_token, decode_token, register_user, authenticate_user, oauth2_scheme, get_current_user, admin_only_route
+from auth import create_access_token, create_refresh_token, decode_token, register_user, authenticate_user, oauth2_scheme, get_current_user, admin_only_route
 
 app = FastAPI(title="Solar Quotation System API", docs_url="/docs", redoc_url="/redoc")
 
@@ -65,12 +64,21 @@ def login(user: UserAuth):
     if not token_data:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    db_manager.store_refresh_token(user.username, token_data["refresh_token"])
+    access_token = token_data["access_token"]
+    refresh_token = token_data["refresh_token"]
+
+    # Blacklist old access token and store new one
+    db_manager.update_access_token(user.username, access_token)
+
+    # Store refresh token (this deletes the old one)
+    db_manager.store_refresh_token(user.username, refresh_token)
 
     return {
-        "access_token": token_data["access_token"],
-        "refresh_token": token_data["refresh_token"],
+        "access_token": access_token,
+        "refresh_token": refresh_token,
     }
+
+
 
 @app.post("/change-password")
 def change_password(
@@ -113,7 +121,8 @@ def refresh_token(model: RefreshTokenModel):
         if not db_manager.is_valid_refresh_token(username, refresh_token):
             raise HTTPException(status_code=401, detail="Refresh token invalid or reused")
 
-        # Invalidate old refresh token
+        # Invalidate old refresh token by blacklisting + deleting
+        db_manager.blacklist_token(refresh_token)  # 🛡️ Important addition
         db_manager.delete_refresh_token(username)
 
         # Get user details
