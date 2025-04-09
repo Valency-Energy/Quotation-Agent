@@ -2,7 +2,7 @@ import requests
 import json
 
 # API URL
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = "http://0.0.0.0:8000"
 QUOTATION_ENDPOINT = f"{BASE_URL}/api/quotations/"
 
 # Sample request payload
