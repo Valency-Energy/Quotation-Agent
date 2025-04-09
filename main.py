@@ -1,12 +1,15 @@
+import jwt
 import uvicorn
 import logging
-from fastapi import FastAPI, Body, HTTPException, Query, Path
+from fastapi import FastAPI, Body, HTTPException, Query
 from typing import List, Dict, Optional, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 from itertools import product
+from fastapi import Depends
+import bcrypt
 
 # Import your component models
 from models import (
@@ -14,6 +17,7 @@ from models import (
     ProtectionEquipment, EarthingSystem, NetMetering, Inventory
 )
 from db import db_manager
+from auth import JWT_ALGORITHM, JWT_SECRET, create_access_token, create_refresh_token, decode_token, register_user, authenticate_user, oauth2_scheme, get_current_user, admin_only_route
 
 app = FastAPI(title="Solar Quotation System API", docs_url="/docs", redoc_url="/redoc")
 
@@ -29,6 +33,128 @@ app.add_middleware(
 # Setup logging
 logger = logging.getLogger(__name__)
 
+from pydantic import BaseModel
+
+class UserAuth(BaseModel):
+    username: str
+    password: str
+
+class UserRegister(UserAuth):
+    role: str
+    @validator("role")
+    def validate_role(cls, v):
+        allowed_roles = ["admin", "user"]
+        if v not in allowed_roles:
+            raise ValueError("Role must be either 'admin' or 'user'")
+        return v
+    
+class ChangePasswordModel(BaseModel):
+    old_password: str
+    new_password: str
+
+@app.post("/register")
+def register(user: UserRegister):
+    success = register_user(user.username, user.password, user.role)
+    if not success:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    return {"message": "User registered successfully"}
+
+@app.post("/login")
+def login(user: UserAuth):
+    token_data = authenticate_user(user.username, user.password)
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    db_manager.store_refresh_token(user.username, token_data["refresh_token"])
+
+    return {
+        "access_token": token_data["access_token"],
+        "refresh_token": token_data["refresh_token"],
+    }
+
+@app.post("/change-password")
+def change_password(
+    password_data: ChangePasswordModel,
+    user: dict = Depends(get_current_user)
+):
+    users = db_manager.collections["users"]
+    user_data = users.find_one({"username": user["username"]})
+
+    if not user_data or not bcrypt.checkpw(password_data.old_password.encode(), user_data["password"]):
+        raise HTTPException(status_code=400, detail="Invalid old password")
+
+    new_hashed = bcrypt.hashpw(password_data.new_password.encode(), bcrypt.gensalt())
+
+    users.update_one(
+        {"username": user["username"]},
+        {"$set": {
+            "password": new_hashed,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+
+    return {"message": "Password changed successfully"}
+
+class RefreshTokenModel(BaseModel):
+    refresh_token: str
+
+@app.post("/refresh")
+def refresh_token(model: RefreshTokenModel):
+    refresh_token = model.refresh_token
+    try:
+        # Decode the refresh token
+        payload = decode_token(refresh_token)
+        username = payload.get("username")
+
+        if not username:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+        # Validate the refresh token using db_manager function
+        if not db_manager.is_valid_refresh_token(username, refresh_token):
+            raise HTTPException(status_code=401, detail="Refresh token invalid or reused")
+
+        # Invalidate old refresh token
+        db_manager.delete_refresh_token(username)
+
+        # Get user details
+        user_data = db_manager.collections["users"].find_one({"username": username})
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Generate new tokens
+        new_access_token = create_access_token({
+            "username": username,
+            "role": user_data["role"]
+        })
+        new_refresh_token = create_refresh_token({"username": username})
+
+        # Store new refresh token
+        db_manager.store_refresh_token(username, new_refresh_token)
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+    
+@app.post("/logout")
+def logout(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = decode_token(token)
+        username = payload.get("username")
+
+        db_manager.blacklist_token(token)
+        db_manager.delete_refresh_token(username)
+
+        return {"message": "Successfully logged out"}
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
 # Response models with ID field
 class ComponentResponse(BaseModel):
     id: str
@@ -42,7 +168,11 @@ def prepare_component_data(component):
 
 # Solar Panel Endpoints
 @app.post("/api/solar-panels/", response_model=ComponentResponse)
-async def add_solar_panel(panel: SolarPanel = Body(...)):
+@admin_only_route
+async def add_solar_panel(
+    panel: SolarPanel = Body(...),
+    user: dict = Depends(get_current_user)
+):
     try:
         panel_data = prepare_component_data(panel)
         inserted_id = db_manager.add_material("solar_panel", panel_data)
@@ -51,7 +181,8 @@ async def add_solar_panel(panel: SolarPanel = Body(...)):
         raise HTTPException(status_code=500, detail=f"Failed to add solar panel: {str(e)}")
 
 @app.get("/api/solar-panels/")
-async def get_solar_panels():
+@admin_only_route
+async def get_solar_panels(user: dict = Depends(get_current_user)):
     try:
         panels = db_manager.get_all_materials("solar_panel")
         return {"solar_panels": panels}
@@ -59,124 +190,108 @@ async def get_solar_panels():
         raise HTTPException(status_code=500, detail=f"Failed to retrieve solar panels: {str(e)}")
 
 # Inverter Endpoints
+from auth import admin_only_route
+
 @app.post("/api/inverters/", response_model=ComponentResponse)
-async def add_inverter(inverter: Inverter = Body(...)):
-    try:
-        inverter_data = prepare_component_data(inverter)
-        inserted_id = db_manager.add_material("inverter", inverter_data)
-        return {"id": inserted_id, "message": "Inverter added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add inverter: {str(e)}")
+@admin_only_route
+async def add_inverter(inverter: Inverter = Body(...), user: dict = Depends(get_current_user)):
+    inverter_data = prepare_component_data(inverter)
+    inserted_id = db_manager.add_material("inverter", inverter_data)
+    return {"id": inserted_id, "message": "Inverter added successfully"}
 
 @app.get("/api/inverters/")
-async def get_inverters():
-    try:
-        inverters = db_manager.get_all_materials("inverter")
-        return {"inverters": inverters}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve inverters: {str(e)}")
+@admin_only_route
+async def get_inverters(user: dict = Depends(get_current_user)):
+    inverters = db_manager.get_all_materials("inverter")
+    return {"inverters": inverters}
 
 # Mounting Structure Endpoints
 @app.post("/api/mounting-structures/", response_model=ComponentResponse)
-async def add_mounting_structure(structure: MountingStructure = Body(...)):
-    try:
-        structure_data = prepare_component_data(structure)
-        inserted_id = db_manager.add_material("mounting_structure", structure_data)
-        return {"id": inserted_id, "message": "Mounting structure added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add mounting structure: {str(e)}")
+@admin_only_route
+async def add_mounting_structure(structure: MountingStructure = Body(...), user: dict = Depends(get_current_user)):
+    structure_data = prepare_component_data(structure)
+    inserted_id = db_manager.add_material("mounting_structure", structure_data)
+    return {"id": inserted_id, "message": "Mounting structure added successfully"}
 
 @app.get("/api/mounting-structures/")
-async def get_mounting_structures():
-    try:
-        structures = db_manager.get_all_materials("mounting_structure")
-        return {"mounting_structures": structures}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve mounting structures: {str(e)}")
+@admin_only_route
+async def get_mounting_structures(user: dict = Depends(get_current_user)):
+    structures = db_manager.get_all_materials("mounting_structure")
+    return {"mounting_structures": structures}
+
 
 # BOS Component Endpoints
 @app.post("/api/bos-components/", response_model=ComponentResponse)
-async def add_bos_component(component: BOSComponent = Body(...)):
-    try:
-        component_data = prepare_component_data(component)
-        inserted_id = db_manager.add_material("bos_component", component_data)
-        return {"id": inserted_id, "message": "BOS component added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add BOS component: {str(e)}")
+@admin_only_route
+async def add_bos_component(component: BOSComponent = Body(...), user: dict = Depends(get_current_user)):
+    component_data = prepare_component_data(component)
+    inserted_id = db_manager.add_material("bos_component", component_data)
+    return {"id": inserted_id, "message": "BOS component added successfully"}
 
 @app.get("/api/bos-components/")
-async def get_bos_components():
-    try:
-        components = db_manager.get_all_materials("bos_component")
-        return {"bos_components": components}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve BOS components: {str(e)}")
+@admin_only_route
+async def get_bos_components(user: dict = Depends(get_current_user)):
+    components = db_manager.get_all_materials("bos_component")
+    return {"bos_components": components}
+
 
 # Protection Equipment Endpoints
 @app.post("/api/protection-equipment/", response_model=ComponentResponse)
-async def add_protection_equipment(equipment: ProtectionEquipment = Body(...)):
-    try:
-        equipment_data = prepare_component_data(equipment)
-        inserted_id = db_manager.add_material("protection_equipment", equipment_data)
-        return {"id": inserted_id, "message": "Protection equipment added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add protection equipment: {str(e)}")
+@admin_only_route
+async def add_protection_equipment(equipment: ProtectionEquipment = Body(...), user: dict = Depends(get_current_user)):
+    equipment_data = prepare_component_data(equipment)
+    inserted_id = db_manager.add_material("protection_equipment", equipment_data)
+    return {"id": inserted_id, "message": "Protection equipment added successfully"}
 
 @app.get("/api/protection-equipment/")
-async def get_protection_equipment():
-    try:
-        equipment = db_manager.get_all_materials("protection_equipment")
-        return {"protection_equipment": equipment}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve protection equipment: {str(e)}")
+@admin_only_route
+async def get_protection_equipment(user: dict = Depends(get_current_user)):
+    equipment = db_manager.get_all_materials("protection_equipment")
+    return {"protection_equipment": equipment}
+
 
 # Earthing System Endpoints
 @app.post("/api/earthing-systems/", response_model=ComponentResponse)
-async def add_earthing_system(system: EarthingSystem = Body(...)):
-    try:
-        system_data = prepare_component_data(system)
-        inserted_id = db_manager.add_material("earthing_system", system_data)
-        return {"id": inserted_id, "message": "Earthing system added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add earthing system: {str(e)}")
+@admin_only_route
+async def add_earthing_system(system: EarthingSystem = Body(...), user: dict = Depends(get_current_user)):
+    system_data = prepare_component_data(system)
+    inserted_id = db_manager.add_material("earthing_system", system_data)
+    return {"id": inserted_id, "message": "Earthing system added successfully"}
 
 @app.get("/api/earthing-systems/")
-async def get_earthing_systems():
-    try:
-        systems = db_manager.get_all_materials("earthing_system")
-        return {"earthing_systems": systems}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve earthing systems: {str(e)}")
+@admin_only_route
+async def get_earthing_systems(user: dict = Depends(get_current_user)):
+    systems = db_manager.get_all_materials("earthing_system")
+    return {"earthing_systems": systems}
+
 
 # Net Metering Endpoints
 @app.post("/api/net-metering/", response_model=ComponentResponse)
-async def add_net_metering(metering: NetMetering = Body(...)):
-    try:
-        metering_data = prepare_component_data(metering)
-        inserted_id = db_manager.add_material("net_metering", metering_data)
-        return {"id": inserted_id, "message": "Net metering added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add net metering: {str(e)}")
+@admin_only_route
+async def add_net_metering(metering: NetMetering = Body(...), user: dict = Depends(get_current_user)):
+    metering_data = prepare_component_data(metering)
+    inserted_id = db_manager.add_material("net_metering", metering_data)
+    return {"id": inserted_id, "message": "Net metering added successfully"}
 
 @app.get("/api/net-metering/")
-async def get_net_metering():
-    try:
-        metering = db_manager.get_all_materials("net_metering")
-        return {"net_metering": metering}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve net metering: {str(e)}")
+@admin_only_route
+async def get_net_metering(user: dict = Depends(get_current_user)):
+    metering = db_manager.get_all_materials("net_metering")
+    return {"net_metering": metering}
 
+# Add to Inventory (Admin Only)
 @app.post("/api/inventory/", response_model=ComponentResponse)
+@admin_only_route
 async def add_to_inventory(
     user_id: str,
-    items: Dict[str, List[List[str]]] = Body(...)  # Updated to List[List[str]]
+    items: Dict[str, List[List[str]]] = Body(...),  # No more user_id param
+    user: dict = Depends(get_current_user)
 ):
     try:
+        ## user_id = user["username"] 
         inventory = db_manager.get_user_inventory(user_id)
-        
-        # Use correct collection name
         inventory_collection = db_manager.collections["inventories"]
-        
+
         if not inventory:
             inventory_data = {
                 "user_id": user_id,
@@ -190,62 +305,59 @@ async def add_to_inventory(
                 "created_at": datetime.now(),
                 "updated_at": datetime.now(),
             }
-            
+
             for category, components in items.items():
                 if category in inventory_data:
                     inventory_data[category] = components
-            
+
             insert_result = inventory_collection.insert_one(inventory_data)
-            
             return {"id": str(insert_result.inserted_id), "message": "Inventory created successfully"}
-        
+
         else:
             update_data = {
                 "$set": {"updated_at": datetime.now()},
                 "$push": {}
             }
-            
+
             for category, components in items.items():
                 if category in inventory:
                     update_data["$push"][category] = {"$each": components}
-            
-            # Clean up if there's no $push data
+
             if not update_data["$push"]:
                 update_data.pop("$push")
-            
+
             inventory_collection.update_one(
                 {"user_id": user_id},
                 update_data
             )
-            
+
             updated_inventory = db_manager.get_user_inventory(user_id)
             return {"id": str(updated_inventory["_id"]), "message": "Inventory updated successfully"}
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update inventory: {str(e)}")
-    
 
+
+# Get Inventory (User and Admin)
 @app.get("/api/inventory/{user_id}", response_model=Dict)
-async def get_user_inventory(user_id: str):
+async def get_user_inventory(user_id : str, user: dict = Depends(get_current_user)):
     try:
         inventory = db_manager.get_user_inventory(user_id)
-        
+
         if not inventory:
             raise HTTPException(
-                status_code=404, 
-                detail=f"No inventory found for user ID: {user_id}"
+                status_code=404,
+                detail=f"No inventory found for user: {user_id}"
             )
-        
-        # Convert ObjectId to string for JSON serialization
+
         inventory["_id"] = str(inventory["_id"])
-        
         return inventory
-    
+
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Failed to retrieve inventory: {str(e)}"
         )
         
@@ -259,8 +371,9 @@ class InventoryQuotation(BaseModel):
     
 import itertools
 from fastapi import Query
+
 @app.get("/api/inventory/{user_id}/quotations")
-async def generate_user_quotations(user_id: str, max_quotations: int = Query(10, description="Maximum number of quotations to generate")):
+async def generate_user_quotations(user_id: str, max_quotations: int = Query(10, description="Maximum number of quotations to generate"), user: dict = Depends(get_current_user)):
     try:
         inventory = db_manager.get_user_inventory(user_id)
         
@@ -396,7 +509,7 @@ class QuotationResponse(BaseModel):
     system_capacity_kw: float
 
 @app.post("/api/quotations/", response_model=QuotationResponse)
-async def get_quotation(request: QuotationFilterRequest = Body(...)):
+async def get_quotation(request: QuotationFilterRequest = Body(...), user: dict = Depends(get_current_user)):
     try:
         # Fetch all components
         inverters = db_manager.get_all_materials("inverter")
