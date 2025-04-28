@@ -20,6 +20,8 @@ router = APIRouter()
 
 @router.post("/register")
 def register(user: UserRegister):
+    if not user.username or not user.password or not user.role:
+        raise HTTPException(status_code=400, detail="All fields (username, password, role) are required")
     success = register_user(user.username, user.password, user.role)
     if not success:
         raise HTTPException(status_code=400, detail="Username already exists")
