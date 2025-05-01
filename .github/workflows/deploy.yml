@@ -23,6 +23,7 @@ jobs:
     - name: Deploy with Docker Compose
       run: |
         ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519 ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} "
+          git config --global --add safe.directory /home/riteshkapoor1314/Quotation-Agent &&
           cd /home/riteshkapoor1314/Quotation-Agent &&
           git pull origin main &&
           docker-compose down &&
