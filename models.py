@@ -113,13 +113,21 @@ class NetMetering(BaseModel):
 
 class Inventory(BaseModel):
     user_id: str    
-    SolarPanels:List[List[str]]
-    Inverters: List[List[str]]
-    MountingStructures: List[List[str]]
-    BOSComponents: List[List[str]]
-    ProtectionEquipment: List[List[str]]
-    EarthingSystems: List[List[str]]
-    NetMetering: List[List[str]]
+    SolarPanels: List[List[Union[str, int]]]  # [model, quantity, cost, profit]
+    Inverters: List[List[Union[str, int]]]
+    MountingStructures: List[List[Union[str, int]]]
+    BOSComponents: List[List[Union[str, int]]]
+    ProtectionEquipment: List[List[Union[str, int]]]
+    EarthingSystems: List[List[Union[str, int]]]
+    NetMetering: List[List[Union[str, int]]]
+
+# Updated Quotation model
+class InventoryQuotation(BaseModel):
+    user_id: str
+    inventory_id: str
+    quotation: Dict[str, str]  # just storing model numbers
+    total_cost: float
+    total_profit: float
     
 
 ComponentType = Union[
@@ -132,12 +140,6 @@ ComponentType = Union[
     NetMetering
 ]
 
-class InventoryQuotation(BaseModel):
-    user_id: str
-    inventory_id: str
-    quotation: List[List[Dict[str, Any]]]
-    total_cost: float
-    total_profit: float
 
 # Define the request model
 class QuotationFilterRequest(BaseModel):
