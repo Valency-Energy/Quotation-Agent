@@ -17,6 +17,9 @@ from auth import create_access_token, create_refresh_token, decode_token, regist
 
 router = APIRouter()
 
+@router.get("/api/health")
+async def health_check():
+    return {"status": "ok"}
 
 @router.post("/register")
 def register(user: UserRegister):
