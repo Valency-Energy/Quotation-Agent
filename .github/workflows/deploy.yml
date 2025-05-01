@@ -1,0 +1,30 @@
+name: Deploy to GCP VM
+
+on:
+  push:
+    branches:
+      - main  # Change this to your deployment branch, if different.
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan -H ${{ secrets.GCP_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Deploy with Docker Compose
+      run: |
+        ssh -i ~/.ssh/id_ed25519 ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} << 'EOF'
+          cd /home/riteshkapoor1314/Quotation-Agent
+          git pull origin main  # Pull latest changes from GitHub
+          docker-compose down  # Stop old containers
+          docker-compose up -d --build  # Rebuild and restart containers
+        EOF
