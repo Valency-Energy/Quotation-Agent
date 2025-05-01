@@ -10,7 +10,7 @@ from functools import wraps
 
 load_dotenv()
 
-JWT_SECRET = os.getenv("JWT_KEY") 
+JWT_SECRET = os.getenv("JWT_SECRET") 
 JWT_ALGORITHM = "HS256"
 JWT_EXP_DELTA_MINUTES = 60
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
