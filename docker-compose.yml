@@ -7,8 +7,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URI=${MONGODB_URI:-mongodb://localhost:27017/}
-      - DATABASE_NAME=${DATABASE_NAME:-inventory_db}
+      - MONGODB_URI
+      - DATABASE_NAME
+      - JWT_SECRET
     networks:
       - inventory-network
     restart: always
