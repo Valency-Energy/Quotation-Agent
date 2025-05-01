@@ -23,7 +23,7 @@ jobs:
     - name: Deploy with Docker Compose
       run: |
         ssh -i ~/.ssh/id_ed25519 ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} << 'EOF'
-          cd /home/riteshkapoor1314/your-project-directory
+          cd /home/riteshkapoor1314/Quotation-Agent
           git pull origin main  # Pull latest changes from GitHub
           docker-compose down  # Stop old containers
           docker-compose up -d --build  # Rebuild and restart containers
