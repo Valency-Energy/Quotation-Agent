@@ -13,8 +13,6 @@ load_dotenv()
 JWT_SECRET = os.getenv("JWT_KEY") 
 JWT_ALGORITHM = "HS256"
 JWT_EXP_DELTA_MINUTES = 60
-
-# OAuth2 scheme for token extraction
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
