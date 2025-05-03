@@ -1,26 +1,11 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 from typing import Any, List, Dict, Optional, Union
 
-# User authentication models
-class UserAuth(BaseModel):
-    username: str
-    password: str
-
-class UserRegister(UserAuth):
+class User(BaseModel):
+    email: str
+    full_name: str
+    picture: Optional[str] = None
     role: str
-    @validator("role")
-    def validate_role(cls, v):
-        allowed_roles = ["admin", "user"]
-        if v not in allowed_roles:
-            raise ValueError("Role must be either 'admin' or 'user'")
-        return v
-    
-class ChangePasswordModel(BaseModel):
-    old_password: str
-    new_password: str
-
-class RefreshTokenModel(BaseModel):
-    refresh_token: str
 
 class ComponentResponse(BaseModel):
     id: str

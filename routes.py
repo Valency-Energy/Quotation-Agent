@@ -1,144 +1,162 @@
 import itertools
-from fastapi import APIRouter, Body, HTTPException, Header, Query
+import os
+from fastapi import APIRouter, Body, HTTPException, Query, status
 from typing import List, Dict
 from datetime import datetime
 import uuid
 from itertools import product
 from fastapi import Depends
-import bcrypt
+from fastapi.responses import HTMLResponse
+import httpx
 
 # Import your component models
 from models import (
-    ChangePasswordModel, ComponentQuotation, ComponentResponse, InventoryQuotation, MountingQuotation, QuotationFilterRequest, QuotationOption, QuotationResponse, RefreshTokenModel, SolarPanel, Inverter, MountingStructure, BOSComponent, 
-    ProtectionEquipment, EarthingSystem, NetMetering, UserAuth, UserRegister
+    ComponentQuotation, ComponentResponse, InventoryQuotation, MountingQuotation, QuotationFilterRequest, QuotationOption, QuotationResponse, SolarPanel, Inverter, MountingStructure, BOSComponent, 
+    ProtectionEquipment, EarthingSystem, NetMetering,
 )
 from db import db_manager
-from auth import create_access_token, create_refresh_token, decode_token, register_user, authenticate_user, oauth2_scheme, get_current_user, admin_only_route
+from auth import create_access_token, create_refresh_token, oauth2_scheme, get_current_user, admin_only_route
 
 router = APIRouter()
 
 
-@router.post("/register")
-def register(user: UserRegister):
-    success = register_user(user.username, user.password, user.role)
-    if not success:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    return {"message": "User registered successfully"}
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+REDIRECT_URI = os.getenv("REDIRECT_URI")
 
-@router.post("/login")
-def login(user: UserAuth):
-    token_data = authenticate_user(user.username, user.password)
-    if not token_data:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+@router.get("/")
+async def root():
+    return {"message": "Hello World"}
 
-    access_token = token_data["access_token"]
-    refresh_token = token_data["refresh_token"]
 
-    # Blacklist old access token and store new one
-    db_manager.update_access_token(user.username, access_token)
+@router.get("/auth/")
+async def google_login(data: Dict = Body(...)):
+    role = data.get("role", "user") 
+    if role not in ("user", "admin"):
+        raise HTTPException(status_code=400, detail="Invalid role")
 
-    # Store refresh token (this deletes the old one)
-    db_manager.store_refresh_token(user.username, refresh_token)
-
+    state_param = role
     return {
-        "username": user.username,
-        "access_token": access_token,
-        "refresh_token": refresh_token,
+        "url": f"https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={GOOGLE_CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=openid%20email%20profile&state={state_param}"
     }
 
 
+@router.get("/auth/callback", response_class=HTMLResponse)
+async def auth_callback(code: str, state: str = Query(...)):
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
 
-@router.post("/change-password")
-def change_password(
-    password_data: ChangePasswordModel,
-    user: dict = Depends(get_current_user)
-):
-    users = db_manager.collections["users"]
-    user_data = users.find_one({"username": user["username"]})
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(token_url, data=data)
+        token_data = token_response.json()
 
-    if not user_data or not bcrypt.checkpw(password_data.old_password.encode(), user_data["password"]):
-        raise HTTPException(status_code=400, detail="Invalid old password")
+        user_info_response = await client.get(
+            "https://www.googleapis.com/oauth2/v1/userinfo",
+            headers={"Authorization": f"Bearer {token_data['access_token']}"},
+        )
+        user_info = user_info_response.json()
 
-    new_hashed = bcrypt.hashpw(password_data.new_password.encode(), bcrypt.gensalt())
+    desired_role = state
+    existing_user = db_manager.get_user(user_info["email"])
+    role = existing_user["role"] if existing_user else desired_role
 
-    users.update_one(
-        {"username": user["username"]},
-        {"$set": {
-            "password": new_hashed,
-            "updated_at": datetime.utcnow()
-        }}
-    )
+    user = {
+        "email": user_info["email"],
+        "full_name": user_info["name"],
+        "picture": user_info.get("picture"),
+        "role": role,
+        "updated_at": datetime.utcnow(),
+    }
 
-    return {"message": "Password changed successfully"}
+    db_manager.collections["users"].update_one({"email": user["email"]}, {"$set": user}, upsert=True)
+
+    access_token = create_access_token(data={"sub": user["email"], "role": role})
+    refresh_token = create_refresh_token(data={"sub": user["email"], "role": role})
+
+    db_manager.store_refresh_token(user["email"], refresh_token)
+    db_manager.update_access_token(user["email"], access_token)
+
+    html_content = f"""
+        <script>
+            localStorage.setItem('access_token', '{access_token}');
+            localStorage.setItem('refresh_token', '{refresh_token}');
+            console.log('Access Token:', '{access_token}');
+            console.log('Refresh Token:', '{refresh_token}');
+            window.location.href = '/';
+        </script>
+    """
+    return HTMLResponse(content=html_content)
 
 
+@router.post("/refresh_token", summary="Refresh access token")
+async def refresh_access_token(data: Dict = Body(...)):
+    refresh_token = data.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="refresh_token is required")
 
-@router.post("/refresh")
-def refresh_token(
-    model: RefreshTokenModel,
-    authorization: str = Header(None) 
-):
-    refresh_token = model.refresh_token
+    from auth import decode_token
+
     try:
-        # Decode the refresh token
         payload = decode_token(refresh_token)
-        username = payload.get("username")
+        email = payload.get("sub")
+        role = payload.get("role")
 
-        if not username:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid refresh token"
+            )
 
-        # Validate the refresh token using db_manager function
-        if not db_manager.is_valid_refresh_token(username, refresh_token):
-            raise HTTPException(status_code=401, detail="Refresh token invalid or reused")
+        user = db_manager.get_user(email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
 
-        # Invalidate old refresh token
-        db_manager.blacklist_token(refresh_token)
-        db_manager.delete_refresh_token(username)
+        stored_refresh_token = db_manager.get_refresh_token(email)
 
-        if authorization and authorization.startswith("Bearer "):
-            old_access_token = authorization.split(" ")[1]
-            db_manager.blacklist_token(old_access_token)
+        if not stored_refresh_token or stored_refresh_token != refresh_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token",
+            )
 
-        # Get user details
-        user_data = db_manager.collections["users"].find_one({"username": username})
-        if not user_data:
-            raise HTTPException(status_code=404, detail="User not found")
+        access_token = create_access_token(data={"sub": email, "role": role})
+        db_manager.update_access_token(email, access_token)
 
-        # Generate new tokens
-        new_access_token = create_access_token({
-            "username": username,
-            "role": user_data["role"]
-        })
-        new_refresh_token = create_refresh_token({"username": username})
-
-        # Store new refresh token
-        db_manager.store_refresh_token(username, new_refresh_token)
-
-        return {
-            "access_token": new_access_token,
-            "refresh_token": new_refresh_token
-        }
+        return {"access_token": access_token, "token_type": "bearer"}
 
     except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-    
-@router.post("/logout")
-def logout(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = decode_token(token)
-        username = payload.get("username")
-
-        db_manager.blacklist_token(token)
-        db_manager.delete_refresh_token(username)
-
-        return {"message": "Successfully logged out"}
-
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        )
     except Exception as e:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not refresh token: {str(e)}",
+        )
+
+
+@router.post("/logout")
+async def logout(token: str = Depends(oauth2_scheme)):
+    from auth import decode_token
+
+    try:
+        user_data = decode_token(token)
+        username = user_data.get("sub")
+        db_manager.blacklist_token(token)
+        db_manager.clear_all_refresh_tokens(username)
+        return {"message": "Logged out successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Logout failed: {str(e)}",
+        )
 
 
 # Convert Pydantic models to dict with additional fields
@@ -261,12 +279,11 @@ async def get_net_metering(user: dict = Depends(get_current_user)):
 @router.post("/api/inventory/", response_model=ComponentResponse)
 @admin_only_route
 async def add_to_inventory(
-    user_id: str,
-    items: Dict[str, List[List[str]]] = Body(...),  # No more user_id param
+    items: Dict[str, List[List[str]]] = Body(...),  
     user: dict = Depends(get_current_user)
 ):
     try:
-        ## user_id = user["username"] 
+        user_id = user["sub"] 
         inventory = db_manager.get_user_inventory(user_id)
         inventory_collection = db_manager.collections["inventories"]
 
@@ -318,8 +335,11 @@ async def add_to_inventory(
 
 # Get Inventory (User and Admin)
 @router.get("/api/inventory/{user_id}", response_model=Dict)
-async def get_user_inventory(user_id : str, user: dict = Depends(get_current_user)):
+@router.get("/api/inventory", response_model=Dict)
+async def get_user_inventory(user: dict = Depends(get_current_user)):
     try:
+        print(user)
+        user_id = user.get("sub") 
         inventory = db_manager.get_user_inventory(user_id)
 
         if not inventory:
