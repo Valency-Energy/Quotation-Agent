@@ -334,11 +334,10 @@ async def add_to_inventory(
 
 
 # Get Inventory (User and Admin)
-@router.get("/api/inventory/{user_id}", response_model=Dict)
+@router.get("/api/inventory/", response_model=Dict)
 @router.get("/api/inventory", response_model=Dict)
 async def get_user_inventory(user: dict = Depends(get_current_user)):
     try:
-        print(user)
         user_id = user.get("sub") 
         inventory = db_manager.get_user_inventory(user_id)
 
@@ -360,9 +359,10 @@ async def get_user_inventory(user: dict = Depends(get_current_user)):
         )
         
 
-@router.get("/api/inventory/{user_id}/quotations")
-async def generate_user_quotations(user_id: str, max_quotations: int = Query(10, description="Maximum number of quotations to generate"), user: dict = Depends(get_current_user)):
+@router.get("/api/inventory/quotations")
+async def generate_user_quotations(max_quotations: int = Query(10, description="Maximum number of quotations to generate"), user: dict = Depends(get_current_user)):
     try:
+        user_id = user['sub']
         inventory = db_manager.get_user_inventory(user_id)
         
         if not inventory:
