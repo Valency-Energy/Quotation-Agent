@@ -1,10 +1,11 @@
-from pymongo import MongoClient, ASCENDING  
+from pymongo import MongoClient, ASCENDING
 from typing import Dict, List, Optional
 import os
 from datetime import datetime
 import bcrypt
 import dotenv
-dotenv.load_dotenv() 
+
+dotenv.load_dotenv()
 
 class MongoDBManager:
     def __init__(self):
@@ -35,12 +36,13 @@ class MongoDBManager:
     def _ensure_ttl_index(self):
         self.collections["blacklisted_tokens"].create_index(
             [("created_at", ASCENDING)],
-            expireAfterSeconds=900 
+            expireAfterSeconds=900  # 15 minutes
+        )
+        self.collections["access_tokens"].create_index(
+            [("created_at", ASCENDING)],
+            expireAfterSeconds=900  # 15 minutes
         )
 
-        self.collections["access_tokens"].create_index(
-        "created_at", expireAfterSeconds=900
-        )
         # TTL for refresh tokens (e.g., 7 days = 604800 seconds)
         self.collections["refresh_tokens"].create_index(
             [("created_at", ASCENDING)],
@@ -57,22 +59,23 @@ class MongoDBManager:
 
     def is_token_blacklisted(self, token: str) -> bool:
         return self.collections["blacklisted_tokens"].find_one({"token": token}) is not None
-    
+
     # ------------------ ACCESS TOKEN FUNCTIONS ------------------
     def update_access_token(self, username: str, new_token: str):
         old_token_doc = self.collections["access_tokens"].find_one({"username": username})
-        
+
         # Blacklist the old token if exists
         if old_token_doc:
             self.blacklist_token(old_token_doc["token"])
             self.collections["access_tokens"].delete_one({"username": username})
-        
+
         # Store new token
         self.collections["access_tokens"].insert_one({
             "username": username,
             "token": new_token,
             "created_at": datetime.utcnow()
         })
+
     # ------------------ REFRESH TOKEN FUNCTIONS ------------------
 
     def store_refresh_token(self, username: str, refresh_token: str):
@@ -97,7 +100,7 @@ class MongoDBManager:
     def clear_all_refresh_tokens(self, username: str):
         self.collections["refresh_tokens"].delete_many({"username": username})
 
-    #------------------ MATERIAL FUNCTIONS ------------------
+    # ------------------ MATERIAL FUNCTIONS ------------------
 
     def add_material(self, material_type: str, material_data: Dict) -> str:
         if material_type not in self.collections:
@@ -133,24 +136,21 @@ class MongoDBManager:
             inventory["_id"] = str(inventory["_id"])
         return inventory
 
-    def register_user(self, username: str, password: str, role: str) -> bool:
-        if self.collections["users"].find_one({"username": username}):
+    def register_user(self, username: str, full_name: str, role: str) -> bool:
+        if self.collections["users"].find_one({"email": username}):
             return False
 
-        hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
-
         self.collections["users"].insert_one({
-            "username": username,
-            "password": hashed_pw,
+            "email": username,
+            "full_name": full_name,
             "role": role,
             "created_at": datetime.utcnow(),
             "updated_at": datetime.utcnow()
         })
         return True
-    
 
     def get_user(self, username: str) -> Optional[Dict]:
-        return self.collections["users"].find_one({"username": username})
+        return self.collections["users"].find_one({"email": username})
 
 
 # Create a single instance of the database manager
