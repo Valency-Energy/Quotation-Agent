@@ -311,17 +311,17 @@ async def add_to_inventory(
                     for component in components:
                         processed_component = component.copy()  # Create a copy to avoid modifying the original
                         
-                        # Convert cost (index 2) to integer if it exists
-                        if len(processed_component) > 2 and processed_component[2] not in ["", "N/A"]:
+                        # Convert cost (index 1) to integer if it exists
+                        if len(processed_component) > 1 and processed_component[1] not in ["", "N/A"]:
                             try:
-                                processed_component[2] = int(processed_component[2])
+                                processed_component[1] = int(processed_component[1])
                             except (ValueError, TypeError):
                                 pass
                         
-                        # Convert profit (index 3) to integer if it exists
-                        if len(processed_component) > 3 and processed_component[3] not in ["", "N/A"]:
+                        # Convert profit (index 2) to integer if it exists
+                        if len(processed_component) > 2 and processed_component[2] not in ["", "N/A"]:
                             try:
-                                processed_component[3] = int(processed_component[3])
+                                processed_component[2] = int(processed_component[2])
                             except (ValueError, TypeError):
                                 pass
                         
@@ -346,17 +346,17 @@ async def add_to_inventory(
                         # Process the new component (convert strings to integers)
                         processed_component = new_component.copy()
                         
-                        # Convert cost to integer
-                        if len(processed_component) > 2 and processed_component[2] not in ["", "N/A"]:
+                        # Convert cost (index 1) to integer
+                        if len(processed_component) > 1 and processed_component[1] not in ["", "N/A"]:
                             try:
-                                processed_component[2] = int(processed_component[2])
+                                processed_component[1] = int(processed_component[1])
                             except (ValueError, TypeError):
                                 pass
                         
-                        # Convert profit to integer
-                        if len(processed_component) > 3 and processed_component[3] not in ["", "N/A"]:
+                        # Convert profit (index 2) to integer
+                        if len(processed_component) > 2 and processed_component[2] not in ["", "N/A"]:
                             try:
-                                processed_component[3] = int(processed_component[3])
+                                processed_component[2] = int(processed_component[2])
                             except (ValueError, TypeError):
                                 pass
                         
@@ -402,6 +402,7 @@ async def add_to_inventory(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update inventory: {str(e)}")
+    
 
 # Get Inventory (User and Admin)
 @router.get("/api/inventory/", response_model=Dict)
@@ -467,28 +468,28 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
             if not panel or not inverter or not mount or not earth:
                 continue
             
-            # Extract costs and profits
-            panel_cost = int(panel[2]) if len(panel) > 2 and panel[2] not in ["", "N/A"] else 0
-            panel_profit = int(panel[3]) if len(panel) > 3 and panel[3] not in ["", "N/A"] else 0
+            # Extract costs and profits using correct indices [model, cost, profit]
+            panel_cost = int(panel[1]) if len(panel) > 1 and panel[1] not in ["", "N/A"] else 0
+            panel_profit = int(panel[2]) if len(panel) > 2 and panel[2] not in ["", "N/A"] else 0
             
-            inverter_cost = int(inverter[2]) if len(inverter) > 2 and inverter[2] not in ["", "N/A"] else 0
-            inverter_profit = int(inverter[3]) if len(inverter) > 3 and inverter[3] not in ["", "N/A"] else 0
+            inverter_cost = int(inverter[1]) if len(inverter) > 1 and inverter[1] not in ["", "N/A"] else 0
+            inverter_profit = int(inverter[2]) if len(inverter) > 2 and inverter[2] not in ["", "N/A"] else 0
             
-            mount_cost = int(mount[2]) if len(mount) > 2 and mount[2] not in ["", "N/A"] else 0
-            mount_profit = int(mount[3]) if len(mount) > 3 and mount[3] not in ["", "N/A"] else 0
+            mount_cost = int(mount[1]) if len(mount) > 1 and mount[1] not in ["", "N/A"] else 0
+            mount_profit = int(mount[2]) if len(mount) > 2 and mount[2] not in ["", "N/A"] else 0
             
-            earth_cost = int(earth[2]) if len(earth) > 2 and earth[2] not in ["", "N/A"] else 0
-            earth_profit = int(earth[3]) if len(earth) > 3 and earth[3] not in ["", "N/A"] else 0
+            earth_cost = int(earth[1]) if len(earth) > 1 and earth[1] not in ["", "N/A"] else 0
+            earth_profit = int(earth[2]) if len(earth) > 2 and earth[2] not in ["", "N/A"] else 0
             
-            # Calculate costs and profits for additional components
-            bos_cost = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in bos_components)
-            bos_profit = sum(int(comp[3]) if len(comp) > 3 and comp[3] not in ["", "N/A"] else 0 for comp in bos_components)
+            # Calculate costs and profits for additional components using correct indices
+            bos_cost = sum(int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0 for comp in bos_components)
+            bos_profit = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in bos_components)
             
-            protection_cost = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in protection_equipment)
-            protection_profit = sum(int(comp[3]) if len(comp) > 3 and comp[3] not in ["", "N/A"] else 0 for comp in protection_equipment)
+            protection_cost = sum(int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0 for comp in protection_equipment)
+            protection_profit = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in protection_equipment)
             
-            metering_cost = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in net_metering)
-            metering_profit = sum(int(comp[3]) if len(comp) > 3 and comp[3] not in ["", "N/A"] else 0 for comp in net_metering)
+            metering_cost = sum(int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0 for comp in net_metering)
+            metering_profit = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in net_metering)
             
             # Calculate total cost and profit
             total_cost = panel_cost + inverter_cost + mount_cost + earth_cost + bos_cost + protection_cost + metering_cost
@@ -521,7 +522,8 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=f"Failed to generate quotations: {str(e)}")
-
+    
+    
 # @router.post("/api/quotations/", response_model=QuotationResponse)
 # async def get_quotation(request: QuotationFilterRequest = Body(...), user: dict = Depends(get_current_user)):
 #     try:
