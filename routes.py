@@ -25,7 +25,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 
 @router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Valency Energy:---- Solar Quotation System API"}
 
 
 @router.get("/auth/")
