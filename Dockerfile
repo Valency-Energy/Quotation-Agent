@@ -1,8 +1,7 @@
 # === Build Stage ===
 FROM python:3.9-slim AS build
 WORKDIR /app
-
-
+# Install system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
@@ -17,14 +16,14 @@ RUN uv pip install --system -r requirements.txt \
     && pip install --no-cache-dir uvicorn
 
 # === Final Stage ===
-FROM python:3.12-slim
+FROM python:3.9-slim
 # Environment setup
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 # Set working directory
 WORKDIR /app
 # Copy packages from build stage
-COPY --from=build /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=build /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 # Copy app source code
 COPY . .
