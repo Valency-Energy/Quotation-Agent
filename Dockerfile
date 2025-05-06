@@ -19,7 +19,7 @@ ENV PATH="/root/.local/bin/:$PATH"
 
 # Copy requirements
 COPY requirements.txt .
-
+RUN /opt/venv/bin/pip install uvicorn
 # Create virtual environment
 RUN python3 -m venv /opt/venv
 
