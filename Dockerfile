@@ -1,53 +1,34 @@
 # === Build Stage ===
 FROM python:3.9-slim AS build
-
 WORKDIR /app
 
-# Install system packages
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    python3-venv \
     ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
 # Copy UV binary from official image
 COPY --from=ghcr.io/astral-sh/uv:0.6.13 /uv /uvx /bin/
-
-# Set PATH for UV
-ENV PATH="/root/.local/bin/:$PATH"
-
 # Copy requirements
 COPY requirements.txt .
-
-# Create virtual environment
-RUN python3 -m venv /opt/venv
-
-# Install dependencies into the venv using UV
-RUN /opt/venv/bin/python -m pip install --upgrade pip \
- && uv pip install --system -r requirements.txt \
- && /opt/venv/bin/pip install uvicorn
+# Install dependencies directly using UV
+RUN uv pip install --system -r requirements.txt \
+    && pip install --no-cache-dir uvicorn
 
 # === Final Stage ===
 FROM python:3.12-slim
-
 # Environment setup
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-
 # Set working directory
 WORKDIR /app
-
-# Copy venv from build stage
-COPY --from=build /opt/venv /opt/venv
-
+# Copy packages from build stage
+COPY --from=build /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=build /usr/local/bin /usr/local/bin
 # Copy app source code
 COPY . .
-
 # Expose FastAPI port
 EXPOSE 8000
-
 # Run the app
-CMD ["/opt/venv/bin/python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
