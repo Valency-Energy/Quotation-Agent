@@ -5,7 +5,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MONGODB_URI: ${MONGODB_URI}
+      MONGO_URI: ${MONGO_URI}
       JWT_SECRET: ${JWT_SECRET}
     networks:
       - inventory-network
