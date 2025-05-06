@@ -60,7 +60,7 @@ class MongoDBManager:
     def is_token_blacklisted(self, token: str) -> bool:
         return self.collections["blacklisted_tokens"].find_one({"token": token}) is not None
 
-    # ------------------ ACCESS TOKEN FUNCTIONS ------------------
+    # ------------------ ACCESS TOKEN FUNCTIONS ------------------_
     def update_access_token(self, username: str, new_token: str):
         old_token_doc = self.collections["access_tokens"].find_one({"username": username})
 
