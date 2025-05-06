@@ -9,10 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # we can clean up the installations by removing the caches
 #via apt-get clean and removing the updated package list via rm-rf /var/lib/apt/lists/*.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --user -r requirements.txt
 # ===== Final Stage =====
 FROM python:3.12-slim
 COPY --from=build /root/.local /root/.local
+
 ENV PATH=/root/.local/bin:$PATH
 
 ENV PYTHONDONTWRITEBYTECODE=1
