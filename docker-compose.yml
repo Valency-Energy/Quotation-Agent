@@ -7,13 +7,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URI
-      - DATABASE_NAME
-      - JWT_SECRET
+      MONGODB_URI: ${MONGODB_URI}
+      DATABASE_NAME: ${DATABASE_NAME}
+      JWT_SECRET: ${JWT_SECRET}
     networks:
       - inventory-network
     restart: always
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app #hot reload source code if developing locally
+    command: >
+      uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env 
 
 networks:
   inventory-network:
