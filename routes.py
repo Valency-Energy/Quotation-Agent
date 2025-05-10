@@ -28,7 +28,7 @@ async def root():
     return {"message": "Valency Energy:---- Solar Quotation System API"}
 
 
-@router.get("/auth/")
+@router.post("/auth/")
 async def google_login(data: Dict = Body(...)):
     role = data.get("role", "user") 
     if role not in ("user", "admin"):
