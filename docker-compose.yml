@@ -1,20 +1,30 @@
-version: '3.8'
-
 services:
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     container_name: inventory-api
     ports:
       - "8000:8000"
     environment:
-      - MONGODB_URI
-      - DATABASE_NAME
-      - JWT_SECRET
+      MONGO_URI: ${MONGO_URI}
+      JWT_SECRET: ${JWT_SECRET}
     networks:
       - inventory-network
     restart: always
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app #hot reload source code if developing locally
+    env_file:
+      - .env
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
 
 networks:
   inventory-network:
     driver: bridge
+    name: inventory-network

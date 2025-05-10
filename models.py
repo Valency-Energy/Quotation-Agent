@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Any, List, Dict, Optional, Union
-
+import datetime
 class User(BaseModel):
     email: str
     full_name: str
@@ -98,7 +98,7 @@ class NetMetering(BaseModel):
 
 class Inventory(BaseModel):
     user_id: str    
-    SolarPanels: List[List[Union[str, int]]]  # [model, quantity, cost, profit]
+    SolarPanels: List[List[Union[str, int]]]  # [model, cost, profit]
     Inverters: List[List[Union[str, int]]]
     MountingStructures: List[List[Union[str, int]]]
     BOSComponents: List[List[Union[str, int]]]
@@ -106,14 +106,14 @@ class Inventory(BaseModel):
     EarthingSystems: List[List[Union[str, int]]]
     NetMetering: List[List[Union[str, int]]]
 
+
 # Updated Quotation model
 class InventoryQuotation(BaseModel):
     user_id: str
     inventory_id: str
-    quotation: Dict[str, str]  # just storing model numbers
+    quotation: Dict[str, Any]  # model numbers for components - some are strings, some are lists
     total_cost: float
     total_profit: float
-    
 
 ComponentType = Union[
     SolarPanel, 
