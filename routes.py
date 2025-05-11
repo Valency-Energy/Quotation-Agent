@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, status
 from typing import List, Dict, Union
 from datetime import datetime
 from fastapi import Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse
 import httpx
 from pymongo import UpdateOne
 
@@ -40,7 +40,7 @@ async def google_login(data: Dict = Body(...)):
     }
 
 
-@router.get("/auth/callback", response_class=HTMLResponse)
+@router.get("/auth/callback")
 async def auth_callback(code: str, state: str = Query(...)):
     token_url = "https://oauth2.googleapis.com/token"
     data = {
@@ -81,16 +81,11 @@ async def auth_callback(code: str, state: str = Query(...)):
     db_manager.store_refresh_token(user["email"], refresh_token)
     db_manager.update_access_token(user["email"], access_token)
 
-    html_content = f"""
-        <script>
-            localStorage.setItem('access_token', '{access_token}');
-            localStorage.setItem('refresh_token', '{refresh_token}');
-            console.log('Access Token:', '{access_token}');
-            console.log('Refresh Token:', '{refresh_token}');
-            window.location.href = '/';
-        </script>
-    """
-    return HTMLResponse(content=html_content)
+    return JSONResponse(content={
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+    })
 
 
 @router.post("/refresh_token", summary="Refresh access token")
