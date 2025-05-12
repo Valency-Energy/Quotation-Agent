@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, status
 from typing import List, Dict, Union
 from datetime import datetime
 from fastapi import Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse
 import httpx
 from pymongo import UpdateOne
 
@@ -81,11 +81,17 @@ async def auth_callback(code: str, state: str = Query(...)):
     db_manager.store_refresh_token(user["email"], refresh_token)
     db_manager.update_access_token(user["email"], access_token)
 
-    return JSONResponse(content={
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-    })
+    html_content = f"""
+    <script>
+        window.opener.postMessage({{
+            access_token: "{access_token}",
+            refresh_token: "{refresh_token}"
+        }}, "*");
+        window.close();
+    </script>
+    """
+
+    return HTMLResponse(content=html_content)
 
 
 @router.post("/refresh_token", summary="Refresh access token")
