@@ -404,6 +404,53 @@ async def add_to_inventory(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update inventory: {str(e)}")
     
+from bson import ObjectId
+from fastapi.encoders import jsonable_encoder
+
+def sanitize_mongo_document(doc: dict) -> dict:
+    """Convert ObjectId and datetime in a MongoDB document to JSON-serializable types."""
+    if not doc:
+        return doc
+    doc = doc.copy()
+    if "_id" in doc and isinstance(doc["_id"], ObjectId):
+        doc["_id"] = str(doc["_id"])
+    for k, v in doc.items():
+        if isinstance(v, datetime):
+            doc[k] = v.isoformat()
+    return doc
+
+@router.post("/api/user_info")
+@admin_only_route
+async def add_user_info(user: dict = Depends(get_current_user), info: dict = Body(...)):
+    try:
+        user_id = user.get("sub")
+        user_info = db_manager.get_user(user_id)
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        update_fields = {}
+        if info.get("gstin"):
+            update_fields["gstin"] = info["gstin"]
+        if info.get("phone"):
+            update_fields["phone"] = info["phone"]
+        if info.get("company_name"):
+            update_fields["company_name"] = info["company_name"]
+        if info.get("company_address"):
+            update_fields["company_address"] = info["company_address"]
+
+        if update_fields:
+            db_manager.collections["users"].update_one(
+                {"email": user_id},
+                {"$set": update_fields}
+            )
+            user_info.update(update_fields)
+
+        sanitized_user_info = sanitize_mongo_document(user_info)
+        return {"user_info": sanitized_user_info}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update user info: {str(e)}")
+
 
 # Get Inventory (User and Admin)
 @router.get("/api/inventory/", response_model=Dict)
@@ -435,7 +482,20 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
     try:
         user_id = user.get("sub")
         inventory = db_manager.get_user_inventory(user_id)
-        
+        user_info = db_manager.get_user(user_id)
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not user_info.get("gstin"):
+            raise HTTPException(status_code=400, detail="GSTIN is required to generate quotations")
+        if user_info["company_name"] :
+            company_name = user_info["company_name"]
+            print(company_name)
+        if user_info["company_address"] :
+            company_address = user_info["company_address"]
+        if user_info["gstin"] :
+            gstin = user_info["gstin"]
+        if user_info["phone"] :
+            phone = user_info["phone"]
         if not inventory:
             raise HTTPException(status_code=404, detail=f"No inventory found for user ID: {user_id}")
         
@@ -517,7 +577,7 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
             
             quotations.append(quotation_obj.dict())
         
-        return {"quotations": quotations, "count": len(quotations)}
+        return {"quotations": quotations, "count": len(quotations), "company_name": company_name, "company_address": company_address, "gstin": gstin, "phone": phone}
         
     except Exception as e:
         if isinstance(e, HTTPException):

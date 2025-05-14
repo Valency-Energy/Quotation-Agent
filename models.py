@@ -6,6 +6,11 @@ class User(BaseModel):
     full_name: str
     picture: Optional[str] = None
     role: str
+    gstin: Optional[str] = None
+    phone: Optional[str] = None
+    company_name: Optional[str] = None
+    company_address: Optional[str] = None
+
 
 class ComponentResponse(BaseModel):
     id: str
