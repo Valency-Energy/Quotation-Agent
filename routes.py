@@ -539,6 +539,24 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
         if not inventory:
             raise HTTPException(status_code=404, detail=f"No inventory found for user ID: {user_id}")
         
+        user_info = db_manager.get_user(user_id)
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not user_info.get("gstin"):
+            raise HTTPException(status_code=400, detail="GSTIN is required to generate quotations")
+        if user_info["company_name"] :
+            company_name = user_info["company_name"]
+            print(company_name)
+        if user_info["company_address"] :
+            company_address = user_info["company_address"]
+        if user_info["gstin"] :
+            gstin = user_info["gstin"]
+        if user_info["phone"] :
+            phone = user_info["phone"]
+
+        user_info = db_manager.get_user(user_id)
+        # Ensure the inventory is in the correct format
+        
         # Get components from inventory
         solar_panels = inventory.get("SolarPanels", [])
         inverters = inventory.get("Inverters", [])
@@ -679,7 +697,7 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
             
             quotations.append(quotation_obj.dict())
         
-        return {"quotations": quotations, "count": len(quotations)}
+        return {"quotations": quotations, "count": len(quotations), "company_name": company_name, "company_address": company_address, "gstin": gstin, "phone": phone}
         
     except Exception as e:
         if isinstance(e, HTTPException):
