@@ -1,9 +1,10 @@
-# === Build Stage ===
+#https://freedium.cfd/https://ai.gopubby.com/optimising-your-docker-image-for-speed-size-and-security-73261c5c84ff
+
 FROM python:3.9-slim AS build
 
-# Set environment variables to reduce Python output
+# Set environment variables to reduce Python output  #__pycache__  #print()
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
+    PYTHONUNBUFFERED=1 \  
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app

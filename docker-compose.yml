@@ -28,3 +28,45 @@ networks:
   inventory-network:
     driver: bridge
     name: inventory-network
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# docker run -d \
+#   --name inventory-api \
+#   --network inventory-network \
+#   -p 8000:8000 \
+#   -e MONGO_URI="your-mongo-uri-here" \
+#   -e JWT_SECRET="your-jwt-secret-here" \
+#   --restart always \
+#   -v $(pwd):/app \
+#   --cpus 2 \
+#   --memory 1G \
+#   --env-file .env \
+#   your-image-name
