@@ -487,7 +487,48 @@ async def get_user_inventory(user: dict = Depends(get_current_user)):
             status_code=500,
             detail=f"Failed to retrieve inventory: {str(e)}"
         )
+@router.delete("/api/inventory/del")
+async def delete_entire_inventory(
+    user: dict = Depends(get_current_user)
+):
+    """
+    Delete the entire inventory for a user.
+    Only administrators can perform this operation.
+    
+    Returns:
+        ComponentResponse with deletion confirmation
+    """
+    try:
+        user_id = user.get("sub")
+        inventory = db_manager.get_user_inventory(user_id)
         
+        if not inventory:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No inventory found for user: {user_id}"
+            )
+        
+        # Delete the entire inventory document
+        result = db_manager.collections["inventories"].delete_one({"user_id": user_id})
+        
+        if result.deleted_count == 0:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to delete inventory"
+            )
+        
+        return {
+            "id": str(inventory["_id"]),
+            "message": "Successfully deleted entire inventory"
+        }
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete inventory: {str(e)}"
+        )      
 #this will help in generating the quotations for the user by permuting the components in the inventory
 @router.get("/api/inventory/quotations")
 async def generate_user_quotations(max_quotations: int = Query(None, description="Maximum number of quotations to generate"), user: dict = Depends(get_current_user)):
