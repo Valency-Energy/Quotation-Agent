@@ -7,6 +7,8 @@ from fastapi import Depends
 from fastapi.responses import HTMLResponse
 import httpx
 from pymongo import UpdateOne
+from bson import ObjectId
+from fastapi.encoders import jsonable_encoder
 
 # Import your component models
 from models import (
@@ -275,6 +277,49 @@ async def get_net_metering(user: dict = Depends(get_current_user)):
     metering = db_manager.get_all_materials("net_metering")
     return {"net_metering": metering}
 
+def sanitize_mongo_document(doc: dict) -> dict:
+    """Convert ObjectId and datetime in a MongoDB document to JSON-serializable types."""
+    if not doc:
+        return doc
+    doc = doc.copy()
+    if "_id" in doc and isinstance(doc["_id"], ObjectId):
+        doc["_id"] = str(doc["_id"])
+    for k, v in doc.items():
+        if isinstance(v, datetime):
+            doc[k] = v.isoformat()
+    return doc
+
+@router.post("/api/user_info")
+@admin_only_route
+async def add_user_info(user: dict = Depends(get_current_user), info: dict = Body(...)):
+    try:
+        user_id = user.get("sub")
+        user_info = db_manager.get_user(user_id)
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        update_fields = {}
+        if info.get("gstin"):
+            update_fields["gstin"] = info["gstin"]
+        if info.get("phone"):
+            update_fields["phone"] = info["phone"]
+        if info.get("company_name"):
+            update_fields["company_name"] = info["company_name"]
+        if info.get("company_address"):
+            update_fields["company_address"] = info["company_address"]
+
+        if update_fields:
+            db_manager.collections["users"].update_one(
+                {"email": user_id},
+                {"$set": update_fields}
+            )
+            user_info.update(update_fields)
+
+        sanitized_user_info = sanitize_mongo_document(user_info)
+        return {"user_info": sanitized_user_info}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update user info: {str(e)}")
 
 #------------------------these are the routes for the quotation generation 
 # Add to Inventory (Admin Only)
@@ -307,22 +352,29 @@ async def add_to_inventory(
 
             for category, components in items.items():
                 if category in inventory_data:
-                    # Convert string numbers to integers for cost and profit
+                    # Convert string numbers to integers for quantity, rate, and profit
                     processed_components = []
                     for component in components:
                         processed_component = component.copy()  # Create a copy to avoid modifying the original
                         
-                        # Convert cost (index 1) to integer if it exists
+                        # Convert quantity (index 1) to integer if it exists
                         if len(processed_component) > 1 and processed_component[1] not in ["", "N/A"]:
                             try:
                                 processed_component[1] = int(processed_component[1])
                             except (ValueError, TypeError):
                                 pass
                         
-                        # Convert profit (index 2) to integer if it exists
+                        # Convert rate (index 2) to integer if it exists
                         if len(processed_component) > 2 and processed_component[2] not in ["", "N/A"]:
                             try:
                                 processed_component[2] = int(processed_component[2])
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Convert profit (index 3) to integer if it exists
+                        if len(processed_component) > 3 and processed_component[3] not in ["", "N/A"]:
+                            try:
+                                processed_component[3] = int(processed_component[3])
                             except (ValueError, TypeError):
                                 pass
                         
@@ -347,17 +399,24 @@ async def add_to_inventory(
                         # Process the new component (convert strings to integers)
                         processed_component = new_component.copy()
                         
-                        # Convert cost (index 1) to integer
+                        # Convert quantity (index 1) to integer
                         if len(processed_component) > 1 and processed_component[1] not in ["", "N/A"]:
                             try:
                                 processed_component[1] = int(processed_component[1])
                             except (ValueError, TypeError):
                                 pass
                         
-                        # Convert profit (index 2) to integer
+                        # Convert rate (index 2) to integer
                         if len(processed_component) > 2 and processed_component[2] not in ["", "N/A"]:
                             try:
                                 processed_component[2] = int(processed_component[2])
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        # Convert profit (index 3) to integer
+                        if len(processed_component) > 3 and processed_component[3] not in ["", "N/A"]:
+                            try:
+                                processed_component[3] = int(processed_component[3])
                             except (ValueError, TypeError):
                                 pass
                         
@@ -404,53 +463,6 @@ async def add_to_inventory(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update inventory: {str(e)}")
     
-from bson import ObjectId
-from fastapi.encoders import jsonable_encoder
-
-def sanitize_mongo_document(doc: dict) -> dict:
-    """Convert ObjectId and datetime in a MongoDB document to JSON-serializable types."""
-    if not doc:
-        return doc
-    doc = doc.copy()
-    if "_id" in doc and isinstance(doc["_id"], ObjectId):
-        doc["_id"] = str(doc["_id"])
-    for k, v in doc.items():
-        if isinstance(v, datetime):
-            doc[k] = v.isoformat()
-    return doc
-
-@router.post("/api/user_info")
-@admin_only_route
-async def add_user_info(user: dict = Depends(get_current_user), info: dict = Body(...)):
-    try:
-        user_id = user.get("sub")
-        user_info = db_manager.get_user(user_id)
-        if not user_info:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        update_fields = {}
-        if info.get("gstin"):
-            update_fields["gstin"] = info["gstin"]
-        if info.get("phone"):
-            update_fields["phone"] = info["phone"]
-        if info.get("company_name"):
-            update_fields["company_name"] = info["company_name"]
-        if info.get("company_address"):
-            update_fields["company_address"] = info["company_address"]
-
-        if update_fields:
-            db_manager.collections["users"].update_one(
-                {"email": user_id},
-                {"$set": update_fields}
-            )
-            user_info.update(update_fields)
-
-        sanitized_user_info = sanitize_mongo_document(user_info)
-        return {"user_info": sanitized_user_info}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update user info: {str(e)}")
-
 
 # Get Inventory (User and Admin)
 @router.get("/api/inventory/", response_model=Dict)
@@ -482,20 +494,7 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
     try:
         user_id = user.get("sub")
         inventory = db_manager.get_user_inventory(user_id)
-        user_info = db_manager.get_user(user_id)
-        if not user_info:
-            raise HTTPException(status_code=404, detail="User not found")
-        if not user_info.get("gstin"):
-            raise HTTPException(status_code=400, detail="GSTIN is required to generate quotations")
-        if user_info["company_name"] :
-            company_name = user_info["company_name"]
-            print(company_name)
-        if user_info["company_address"] :
-            company_address = user_info["company_address"]
-        if user_info["gstin"] :
-            gstin = user_info["gstin"]
-        if user_info["phone"] :
-            phone = user_info["phone"]
+        
         if not inventory:
             raise HTTPException(status_code=404, detail=f"No inventory found for user ID: {user_id}")
         
@@ -529,31 +528,49 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
             if not panel or not inverter or not mount or not earth:
                 continue
             
-            # Extract costs and profits using correct indices [model, cost, profit]
-            panel_cost = int(panel[1]) if len(panel) > 1 and panel[1] not in ["", "N/A"] else 0
-            panel_profit = int(panel[2]) if len(panel) > 2 and panel[2] not in ["", "N/A"] else 0
+            # Extract quantities, rates, and profits using correct indices [model, quantity, rate, profit]
+            # Calculate amounts as quantity * rate
+            panel_quantity = int(panel[1]) if len(panel) > 1 and panel[1] not in ["", "N/A"] else 0
+            panel_rate = int(panel[2]) if len(panel) > 2 and panel[2] not in ["", "N/A"] else 0
+            panel_amount = panel_quantity * panel_rate
+            panel_profit = int(panel[3]) if len(panel) > 3 and panel[3] not in ["", "N/A"] else 0
             
-            inverter_cost = int(inverter[1]) if len(inverter) > 1 and inverter[1] not in ["", "N/A"] else 0
-            inverter_profit = int(inverter[2]) if len(inverter) > 2 and inverter[2] not in ["", "N/A"] else 0
+            inverter_quantity = int(inverter[1]) if len(inverter) > 1 and inverter[1] not in ["", "N/A"] else 0
+            inverter_rate = int(inverter[2]) if len(inverter) > 2 and inverter[2] not in ["", "N/A"] else 0
+            inverter_amount = inverter_quantity * inverter_rate
+            inverter_profit = int(inverter[3]) if len(inverter) > 3 and inverter[3] not in ["", "N/A"] else 0
             
-            mount_cost = int(mount[1]) if len(mount) > 1 and mount[1] not in ["", "N/A"] else 0
-            mount_profit = int(mount[2]) if len(mount) > 2 and mount[2] not in ["", "N/A"] else 0
+            mount_quantity = int(mount[1]) if len(mount) > 1 and mount[1] not in ["", "N/A"] else 0
+            mount_rate = int(mount[2]) if len(mount) > 2 and mount[2] not in ["", "N/A"] else 0
+            mount_amount = mount_quantity * mount_rate
+            mount_profit = int(mount[3]) if len(mount) > 3 and mount[3] not in ["", "N/A"] else 0
             
-            earth_cost = int(earth[1]) if len(earth) > 1 and earth[1] not in ["", "N/A"] else 0
-            earth_profit = int(earth[2]) if len(earth) > 2 and earth[2] not in ["", "N/A"] else 0
+            earth_quantity = int(earth[1]) if len(earth) > 1 and earth[1] not in ["", "N/A"] else 0
+            earth_rate = int(earth[2]) if len(earth) > 2 and earth[2] not in ["", "N/A"] else 0
+            earth_amount = earth_quantity * earth_rate
+            earth_profit = int(earth[3]) if len(earth) > 3 and earth[3] not in ["", "N/A"] else 0
             
-            # Calculate costs and profits for additional components using correct indices
-            bos_cost = sum(int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0 for comp in bos_components)
-            bos_profit = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in bos_components)
+            # Calculate amounts and profits for additional components
+            bos_amount = sum((int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0) * 
+                            (int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0) 
+                            for comp in bos_components)
+            bos_profit = sum(int(comp[3]) if len(comp) > 3 and comp[3] not in ["", "N/A"] else 0 
+                           for comp in bos_components)
             
-            protection_cost = sum(int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0 for comp in protection_equipment)
-            protection_profit = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in protection_equipment)
+            protection_amount = sum((int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0) * 
+                                  (int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0) 
+                                  for comp in protection_equipment)
+            protection_profit = sum(int(comp[3]) if len(comp) > 3 and comp[3] not in ["", "N/A"] else 0 
+                                  for comp in protection_equipment)
             
-            metering_cost = sum(int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0 for comp in net_metering)
-            metering_profit = sum(int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0 for comp in net_metering)
+            metering_amount = sum((int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0) * 
+                                (int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0) 
+                                for comp in net_metering)
+            metering_profit = sum(int(comp[3]) if len(comp) > 3 and comp[3] not in ["", "N/A"] else 0 
+                                for comp in net_metering)
             
-            # Calculate total cost and profit
-            total_cost = panel_cost + inverter_cost + mount_cost + earth_cost + bos_cost + protection_cost + metering_cost
+            # Calculate total amount and profit
+            total_amount = panel_amount + inverter_amount + mount_amount + earth_amount + bos_amount + protection_amount + metering_amount
             total_profit = panel_profit + inverter_profit + mount_profit + earth_profit + bos_profit + protection_profit + metering_profit
             
             # Create simple quotation with just model numbers
@@ -571,18 +588,19 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
                 user_id=user_id,
                 inventory_id=str(inventory["_id"]),
                 quotation=quotation,
-                total_cost=total_cost,
+                total_cost=total_amount,  # Total amount is the cost
                 total_profit=total_profit
             )
             
             quotations.append(quotation_obj.dict())
         
-        return {"quotations": quotations, "count": len(quotations), "company_name": company_name, "company_address": company_address, "gstin": gstin, "phone": phone}
+        return {"quotations": quotations, "count": len(quotations)}
         
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=f"Failed to generate quotations: {str(e)}")
+
     
     
 # @router.post("/api/quotations/", response_model=QuotationResponse)

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Any, List, Dict, Optional, Union
 import datetime
+
 class User(BaseModel):
     email: str
     full_name: str
@@ -27,7 +28,8 @@ class SolarPanel(BaseModel):
     dimensions_mm: str
     weight_kg: float
     cell_configuration: str
-    cost: float
+    quantity: int
+    rate: float
     profit: float
 
 class Inverter(BaseModel):
@@ -44,7 +46,8 @@ class Inverter(BaseModel):
     dimensions: str
     weight_kg: int
     certifications: str
-    cost: float
+    quantity: int
+    rate: float
     profit: float
 
 class MountingStructure(BaseModel):
@@ -55,7 +58,8 @@ class MountingStructure(BaseModel):
     gsm_rating: int
     wind_speed_rating: int
     warranty: int
-    cost: float
+    quantity: int
+    rate: float
     profit: float
 
 class BOSComponent(BaseModel):
@@ -64,7 +68,8 @@ class BOSComponent(BaseModel):
     specifications: str
     quality_grade: str
     warranty: int
-    cost: float
+    quantity: int
+    rate: float
     profit: float
 
 class ProtectionEquipment(BaseModel):
@@ -76,7 +81,8 @@ class ProtectionEquipment(BaseModel):
     ip_rating: str
     certifications: str
     warranty: int
-    cost: float
+    quantity: int
+    rate: float
     profit: float
 
 class EarthingSystem(BaseModel):
@@ -86,7 +92,8 @@ class EarthingSystem(BaseModel):
     specifications: str
     application: str
     warranty: int
-    cost: float
+    quantity: int
+    rate: float
     profit: float
 
 class NetMetering(BaseModel):
@@ -98,12 +105,13 @@ class NetMetering(BaseModel):
     certifications: str
     warranty: int
     additional_hardware: str
-    cost: float
+    quantity: int
+    rate: float
     profit: float
 
 class Inventory(BaseModel):
     user_id: str    
-    SolarPanels: List[List[Union[str, int]]]  # [model, cost, profit]
+    SolarPanels: List[List[Union[str, int]]]  # [model, quantity, rate, profit]
     Inverters: List[List[Union[str, int]]]
     MountingStructures: List[List[Union[str, int]]]
     BOSComponents: List[List[Union[str, int]]]
