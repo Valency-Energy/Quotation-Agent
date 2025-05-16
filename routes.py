@@ -575,14 +575,58 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
             
             # Create simple quotation with just model numbers
             quotation = {
-                "SolarPanel": panel[0],
-                "Inverter": inverter[0],
-                "MountingStructure": mount[0],
-                "EarthingSystem": earth[0],
-                "BOSComponents": [comp[0] for comp in bos_components],
-                "ProtectionEquipment": [comp[0] for comp in protection_equipment],
-                "NetMetering": [comp[0] for comp in net_metering]
-            }
+    "SolarPanel": {
+        "model": panel[0],
+        "quantity": panel_quantity,
+        "rate": panel_rate,
+        "amount": panel_amount
+    },
+    "Inverter": {
+        "model": inverter[0],
+        "quantity": inverter_quantity,
+        "rate": inverter_rate,
+        "amount": inverter_amount
+    },
+    "MountingStructure": {
+        "model": mount[0],
+        "quantity": mount_quantity,
+        "rate": mount_rate,
+        "amount": mount_amount
+    },
+    "EarthingSystem": {
+        "model": earth[0],
+        "quantity": earth_quantity,
+        "rate": earth_rate,
+        "amount": earth_amount
+    },
+    "BOSComponents": [
+        {
+            "model": comp[0],
+            "quantity": int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0,
+            "rate": int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0,
+            "amount": (int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0) * 
+                     (int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0)
+        } for comp in bos_components
+    ],
+    "ProtectionEquipment": [
+        {
+            "model": comp[0],
+            "quantity": int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0,
+            "rate": int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0,
+            "amount": (int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0) * 
+                     (int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0)
+        } for comp in protection_equipment
+    ],
+    "NetMetering": [
+        {
+            "model": comp[0],
+            "quantity": int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0,
+            "rate": int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0,
+            "amount": (int(comp[1]) if len(comp) > 1 and comp[1] not in ["", "N/A"] else 0) * 
+                     (int(comp[2]) if len(comp) > 2 and comp[2] not in ["", "N/A"] else 0)
+        } for comp in net_metering
+    ]
+}
             
             quotation_obj = InventoryQuotation(
                 user_id=user_id,
