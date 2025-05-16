@@ -529,6 +529,8 @@ async def delete_entire_inventory(
             status_code=500,
             detail=f"Failed to delete inventory: {str(e)}"
         )      
+        
+        
 #this will help in generating the quotations for the user by permuting the components in the inventory
 @router.get("/api/inventory/quotations")
 async def generate_user_quotations(max_quotations: int = Query(None, description="Maximum number of quotations to generate"), user: dict = Depends(get_current_user)):
@@ -554,7 +556,6 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
         if user_info["phone"] :
             phone = user_info["phone"]
 
-        user_info = db_manager.get_user(user_id)
         # Ensure the inventory is in the correct format
         
         # Get components from inventory
@@ -705,7 +706,36 @@ async def generate_user_quotations(max_quotations: int = Query(None, description
         raise HTTPException(status_code=500, detail=f"Failed to generate quotations: {str(e)}")
 
     
+@router.post("/api/get_user_info")
+async def get_user_info(user: dict = Depends(get_current_user)):
+    try:
+        print("user")
+        user_id = user.get("sub")
+        user_info = db_manager.get_user(user_id)
+        
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not user_info.get("gstin"):
+            raise HTTPException(status_code=400, detail="GSTIN is required to generate quotations")
+        if user_info["company_name"] :
+            company_name = user_info["company_name"]
+            print(company_name)
+        if user_info["company_address"] :
+            company_address = user_info["company_address"]
+        if user_info["gstin"] :
+            gstin = user_info["gstin"]
+        if user_info["phone"] :
+            phone = user_info["phone"]
+        # Sanitize the user info before returning
+        sanitized_user_info = sanitize_mongo_document(user_info)
+        
+        return {"user_info": sanitized_user_info}
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve user info: {str(e)}")
+    
+
+
 # @router.post("/api/quotations/", response_model=QuotationResponse)
 # async def get_quotation(request: QuotationFilterRequest = Body(...), user: dict = Depends(get_current_user)):
 #     try:
