@@ -715,8 +715,7 @@ async def get_user_info(user: dict = Depends(get_current_user)):
         
         if not user_info:
             raise HTTPException(status_code=404, detail="User not found")
-        if not user_info.get("gstin"):
-            raise HTTPException(status_code=400, detail="GSTIN is required to generate quotations")
+
         if user_info["company_name"] :
             company_name = user_info["company_name"]
             print(company_name)
