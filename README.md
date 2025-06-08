@@ -170,6 +170,4 @@ The API returns appropriate HTTP status codes:
 - `JWT_SECRET`: Secret for JWT token generation
 - `PORT`: Port to run the server (default: 8000)
 
-## License
 
-[MIT License](LICENSE)
